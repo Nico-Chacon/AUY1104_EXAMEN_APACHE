@@ -15,7 +15,7 @@ jobs:
     with:
       image-name: demo-api
       image-tag: ${{ github.ref_name }}
-      k3s-server-public-ip: ${{ vars.K3S_SERVER_PUBLIC_IP }}
+      k3s-server-public-ip: "34.227.69.190"
       environment: production
       namespace: default
       env_vars: ${{ inputs.env_vars }}
