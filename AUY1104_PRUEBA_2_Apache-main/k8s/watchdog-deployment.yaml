@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────────────────────────────────────
+# WATCHDOG DE AUTO-REMEDIACIÓN ("Prueba de Fuego")
+#
+# Complementa el rollback de la etapa de pipeline (que solo actúa AL
+# MOMENTO de desplegar). Este watchdog corre 24/7 DENTRO del clúster y
+# vigila el color actualmente activo, incluso cuando no hay ningún
+# despliegue en curso. Es lo que responde si el docente rompe algo
+# directamente en el clúster durante la defensa (ej. con
+# `kubectl set env deployment/demo-api-green FORCE_HEALTH_FAIL=true`,
+# usando el mismo toggle de chaos-testing que ya expone la API en /health).
+#
+# Lógica:
+#   1. Lee el color activo desde el selector de demo-api-service.
+#   2. Cada 15s, golpea el Service de preview de ESE color
+#      (demo-api-blue-preview o demo-api-green-preview) en /health.
+#   3. Si falla 3 veces seguidas (status != 200), revierte el Service
+#      público al OTRO color automáticamente.
+# ─────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api-watchdog
+  labels:
+    app: demo-api-watchdog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-api-watchdog
+  template:
+    metadata:
+      labels:
+        app: demo-api-watchdog
+    spec:
+      serviceAccountName: demo-api-watchdog-sa
+      containers:
+        - name: watchdog
+          image: alpine/k8s:1.28.2
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -u
+              FAILS=0
+              THRESHOLD=3
+              echo "Watchdog iniciado. Chequeando /health cada 15s..."
+
+              while true; do
+                CURRENT=$(kubectl get service demo-api-service -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo "blue")
+                if [ "$CURRENT" = "blue" ]; then
+                  TARGET_SVC="demo-api-blue-preview"
+                  OTHER="green"
+                else
+                  TARGET_SVC="demo-api-green-preview"
+                  OTHER="blue"
+                fi
+
+                STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://${TARGET_SVC}:3000/health" || echo "000")
+
+                if [ "$STATUS" = "200" ]; then
+                  if [ "$FAILS" -gt 0 ]; then
+                    echo "$(date -u +%FT%TZ) Recuperado. Reiniciando contador de fallos."
+                  fi
+                  FAILS=0
+                else
+                  FAILS=$((FAILS+1))
+                  echo "$(date -u +%FT%TZ) FALLO detectado en '${CURRENT}' (status=$STATUS). Fallos consecutivos: ${FAILS}/${THRESHOLD}"
+                fi
+
+                if [ "$FAILS" -ge "$THRESHOLD" ]; then
+                  echo "$(date -u +%FT%TZ) *** AUTO-HEALING *** Umbral superado en '${CURRENT}'. Revirtiendo trafico publico a '${OTHER}'."
+                  kubectl patch service demo-api-service -p "{\"spec\":{\"selector\":{\"app\":\"demo-api\",\"version\":\"${OTHER}\"}}}"
+                  FAILS=0
+                fi
+
+                sleep 15
+              done

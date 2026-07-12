@@ -1,0 +1,16 @@
+# Simétrico a service-green-preview.yaml: permite golpear la versión "blue"
+# directamente (sin pasar por el tráfico público) para que el watchdog
+# pueda validar la salud de CUALQUIERA de los dos colores, sea cual sea
+# el que esté activo en un momento dado.
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api-blue-preview
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-api
+    version: blue
+  ports:
+    - port: 3000
+      targetPort: 3000

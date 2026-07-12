@@ -1,0 +1,21 @@
+{
+  "name": "auy1104-api-ejemplo-docker",
+  "version": "1.0.0",
+  "description": "API académica de ejemplo para AUY1104 (Express + Docker)",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test.js --coverage"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}
